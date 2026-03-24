@@ -1,6 +1,6 @@
 # Aseprite Builder
 
-[![Actions](https://img.shields.io/github/actions/workflow/status/inaniae/aseprite-builder/builder.yml?branch=main&label=Actions&logo=github-actions&logoColor=white&color=238636)](https://github.com/inaniae/aseprite-builder/actions)
+[![Actions](https://img.shields.io/github/actions/workflow/status/inaniae/aseprite-builder/builder.yml?branch=main&label=Actions)](https://github.com/inaniae/aseprite-builder/actions)
 [![License](https://custom-icon-badges.demolab.com/badge/License-EUPL--1.2-003399?logo=european-union&logoColor=FFCC00)](LICENSE)
 [![Compliance](https://custom-icon-badges.demolab.com/badge/Compliance-EULA-003399?logo=law&logoColor=white)](https://github.com/aseprite/aseprite/blob/main/EULA.txt)
 [![Platform](https://custom-icon-badges.demolab.com/badge/Windows_x64-00A4EF?logo=windows11&logoColor=white)](#)

@@ -1,4 +1,4 @@
-name: Build
+name: Release
 
 on:
   schedule:
@@ -6,14 +6,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Build tag (empty = latest)"
+        description: "Release tag (empty = latest)"
         required: false
         type: string
       force:
-        description: "Force build"
+        description: "Force release"
         required: false
         type: boolean
         default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: write
@@ -29,9 +32,14 @@ jobs:
       - name: Get Tag
         id: tag
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${{ inputs.tag }}"
-          [ -z "$TAG" ] && TAG=$(curl -s https://api.github.com/repos/aseprite/aseprite/releases/latest | jq -r .tag_name)
+          if [ -z "$TAG" ]; then
+            TAG=$(gh api repos/aseprite/aseprite/releases/latest --jq '.tag_name')
+          fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Target: $TAG"
 
@@ -41,10 +49,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          [ "${{ inputs.force }}" == "true" ] && echo "exists=false" >> $GITHUB_OUTPUT && exit 0
+          set -euo pipefail
+          if [ "${{ inputs.force }}" == "true" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           TAG="${{ steps.tag.outputs.tag }}"
-          HIT=$(gh release list -R ${{ github.repository }} --json tagName | jq -r ".[] | select(.tagName == \"$TAG\") | .tagName")
+          HIT=$(gh release list -R ${{ github.repository }} --json tagName --jq ".[] | select(.tagName == \"$TAG\") | .tagName")
 
           if [ "$HIT" == "$TAG" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -72,9 +84,10 @@ jobs:
       - name: Download Skia
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $url = "https://github.com/aseprite/skia/releases/download/m124-08a5439a6b/Skia-Windows-Release-x64.zip"
           Invoke-WebRequest -Uri $url -OutFile "skia.zip"
-          Expand-Archive -Path "skia.zip" -DestinationPath "skia"
+          Expand-Archive -Path "skia.zip" -DestinationPath "skia" -Force
 
       - name: Compile
         shell: cmd
@@ -82,29 +95,29 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (set "VS_PATH=%%i")
           call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x64
           cd aseprite
-          mkdir build && cd build
+          mkdir build
+          cd build
           cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLAF_BACKEND=skia -DSKIA_DIR="%GITHUB_WORKSPACE%\skia" -DSKIA_LIBRARY_DIR="%GITHUB_WORKSPACE%\skia\out\Release-x64" -DSKIA_LIBRARY="%GITHUB_WORKSPACE%\skia\out\Release-x64\skia.lib" -DENABLE_OPENSSL=OFF -DENABLE_CURL=OFF -DENABLE_WEBSOCKET=OFF -DENABLE_NEWS=OFF -DENABLE_UPDATER=OFF -G Ninja ..
           ninja aseprite
 
       - name: Package
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $tag = "${{ needs.check.outputs.tag }}"
           $dist = "dist"
-          mkdir $dist
-          Copy-Item "aseprite\build\bin\aseprite.exe", "aseprite\build\bin\icudtl.dat", "aseprite\build\bin\data" -Destination $dist -Recurse
-          New-Item -Path "$dist\aseprite.ini" -ItemType File
-          Compress-Archive -Path "$dist\*" -DestinationPath "Aseprite-$tag-Windows-x64.zip"
+          if (!(Test-Path $dist)) { New-Item -Path $dist -ItemType Directory | Out-Null }
+          Copy-Item "aseprite\build\bin\aseprite.exe", "aseprite\build\bin\icudtl.dat", "aseprite\build\bin\data" -Destination $dist -Recurse -Force
+          New-Item -Path "$dist\aseprite.ini" -ItemType File -Force | Out-Null
+          Compress-Archive -Path "$dist\*" -DestinationPath "Aseprite-$tag-Windows-x64.zip" -Force
 
       - name: Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $tag = "${{ needs.check.outputs.tag }}"
-
           $notes = (gh release view $tag -R aseprite/aseprite --json body --jq .body) -join "`n"
-
           [IO.File]::WriteAllText("notes.md", $notes)
-
           gh release create $tag "Aseprite-$tag-Windows-x64.zip" -R ${{ github.repository }} --title "Aseprite $tag" --notes-file "notes.md" --draft
